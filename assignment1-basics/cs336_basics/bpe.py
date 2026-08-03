@@ -3,7 +3,7 @@ import regex as re
 from collections import Counter
 from concurrent.futures import ProcessPoolExecutor
 import os 
-
+from tqdm import tqdm
 GPT2_SPLIT_REGEX = r"""'s|'t|'re|'ve|'m|'ll|'d| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
 GPT2_PAT =re.compile(GPT2_SPLIT_REGEX)
 
@@ -86,7 +86,7 @@ def train_bpe(input_path:str ,
 
 
     #合并查找
-    for _ in range(num_merges):
+    for _ in tqdm(range(num_merges)):
 
         if not pair_counts:
             break
@@ -97,6 +97,7 @@ def train_bpe(input_path:str ,
         merges.append(best_pair)
         vocab[len(vocab)] = new_token
 
+    
         
         new_counts = Counter()
         for word_tuple, freq in counts.items():
