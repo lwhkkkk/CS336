@@ -40,3 +40,25 @@ class RMSNorm(nn.Module):
         normed = x_fp32 * rsqrt_rms * self.weight #归一化2
         x=normed.to(in_dtype)
         return x 
+
+class SwiGLU(nn.Module):
+    def __init__(self,d_model:int,d_ff: int | None = None,device = None,dtype =None):
+        super().__init__()
+        if d_ff is None:
+            d_ff =64* ((int(8 * d_model /3) + 63) // 64)#向上取整
+        #特征提取
+        self.w1 =Linear(in_features = d_model,out_features =d_ff,device = device ,dtype = dtype)
+        
+        #汇总输出
+        self.w2 =Linear(in_features = d_ff,out_features = d_model,device = device,dtype =dtype)
+        
+        #流量控制器
+        self.w3 =Linear(in_features = d_model,out_features=d_ff,device= device,dtype =dtype)
+
+    def forward(self,x:torch.Tensor) -> torch.Tensor:
+        #主特征张量
+        out1 = self.w1(x)
+        #门控信号张量
+        out3 = self.w3(x)
+
+        return self.w2(out1 * torch.sigmoid(out1) * out3)
