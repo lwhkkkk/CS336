@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import math
 
 class Linear(nn.Module):
     def __init__(self,in_features,out_features,device=None,dtype=None):
@@ -108,3 +109,20 @@ def softmax(x: torch.Tensor,dim: int)-> torch.Tensor:
     sum_exp = torch.sum(exp_x,dim = dim,keepdim = True)
 
     return exp_x /sum_exp
+
+
+def scaled_dot_product_attention(q:torch.Tensor,k:torch.Tensor,v: torch.Tensor,mask: torch.Tensor |  None = None):
+    d_k =q.shape[-1]
+    #转置k
+    k_t = k.transpose(-2,-1)
+    score =q @ k_t
+
+    score = score / math.sqrt(d_k)
+
+    if mask is not None:
+        score = score.masked_fill(mask == False, float("-inf"))
+
+
+    attn_weight = softmax(score,dim =-1)
+    output = attn_weight @ v
+    return output
