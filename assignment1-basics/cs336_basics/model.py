@@ -62,3 +62,49 @@ class SwiGLU(nn.Module):
         out3 = self.w3(x)
 
         return self.w2(out1 * torch.sigmoid(out1) * out3)
+
+
+class RotaryPositionalEmbedding(nn.Module):
+    def __init__(self,theta:float,d_k: int,max_seq_len: int,device=None):
+        super().__init__()
+
+        #i是一个类似list的tensor
+        i = torch.arange(0,d_k,2,device=device,dtype=torch.float32)
+        freq =   1.0/(theta **(i/d_k) )
+
+        m =torch.arange(0,max_seq_len,1,device =device,dtype=torch.float32)
+        #m 和 freq相互点乘
+        angles = torch.outer(m,freq)
+
+        
+        cos_emb = torch.cos(angles)
+        sin_emb = torch.sin(angles)
+        
+        cos_emb =cos_emb.repeat_interleave(2,dim =-1)
+        sin_emb =sin_emb.repeat_interleave(2,dim =-1)
+        self.register_buffer("cos_cached",cos_emb,persistent =False)
+        self.register_buffer("sin_cached",sin_emb,persistent =False)
+     
+     
+    def forward(self,x:torch.Tensor,token_positions: torch.Tensor) -> torch.Tensor:
+        cos = self.cos_cached[token_positions]
+        sin = self.sin_cached[token_positions]
+        x1 =x[...,0::2]
+        x2 =x[...,1::2]
+
+        #交错配对
+        x_stacked = torch.stack([-x2,x1],dim =-1)
+
+        #展平恢复
+        x_tilde = x_stacked.flatten(start_dim = -2)
+
+        return  x * cos + x_tilde * sin
+
+def softmax(x: torch.Tensor,dim: int)-> torch.Tensor:
+
+    #取最大值
+    m = torch.max(x,dim =dim,keepdim =True).values
+    exp_x = torch.exp(x -m)
+    sum_exp = torch.sum(exp_x,dim = dim,keepdim = True)
+
+    return exp_x /sum_exp
