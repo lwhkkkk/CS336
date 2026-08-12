@@ -126,3 +126,56 @@ def scaled_dot_product_attention(q:torch.Tensor,k:torch.Tensor,v: torch.Tensor,m
     attn_weight = softmax(score,dim =-1)
     output = attn_weight @ v
     return output
+
+
+class Causal_multi_head_self_attention(nn.Module):
+    def __init__(self,d_model: int ,num_heads: int,device = None,dtype =None,max_seq_len:int | None = None,theta:float | None = None):
+        super().__init__()
+
+
+
+        self.d_model = d_model
+        self.num_heads = num_heads
+        self.d_k = d_model //num_heads #计算单个head的特征维度
+
+        #定义旋转位置编码
+        if theta and max_seq_len:
+            self.rope = RotaryPositionalEmbedding(theta=theta,d_k = self.d_k,max_seq_len = max_seq_len,device=device)
+        else:
+            self.rope = None
+
+        self.q_proj = Linear(in_features=d_model,out_features= d_model,device = device,dtype =dtype)
+        self.k_proj = Linear(in_features=d_model,out_features= d_model,device = device,dtype =dtype)
+        self.v_proj = Linear(in_features=d_model,out_features= d_model,device = device,dtype =dtype)
+        self.out_proj = Linear(in_features=d_model,out_features= d_model,device = device,dtype =dtype)
+
+    def forward(self,x :torch.Tensor, token_positions: torch.Tensor | None = None):
+        batch_size ,seq_len,_ = x.shape
+        q = self.q_proj(x)
+        k = self.k_proj(x)
+        v = self.v_proj(x)
+
+        #把d_model的维度，切分成两个子维度(num_heads,d_k)
+        q = q.view(batch_size,seq_len,self.num_heads,self.d_k).transpose(1,2)
+        k = k.view(batch_size,seq_len,self.num_heads,self.d_k).transpose(1,2)
+        v = v.view(batch_size,seq_len,self.num_heads,self.d_k).transpose(1,2)
+
+        if self.rope is not None:
+            if token_positions is None:
+                token_positions = torch.arange(seq_len,device = x.device)
+
+            #对q和k分别施加RoPe融合
+            q = self.rope(q,token_positions)           
+            k = self.rope(k,token_positions)
+
+        #tril（triangular lower)只保留矩阵的下三角
+        causal_mask = torch.tril(torch.ones((seq_len,seq_len),device = x.device,dtype= torch.bool))
+
+        attn_out = scaled_dot_product_attention(q,k,v,mask=causal_mask)
+        
+
+        #contiguous在显存里真正把数据重新拷贝为连续的内存块，再将(num_heads,d_k)重新合成一个单维度d_model
+        attn_out = attn_out.transpose(1,2).contiguous().view(batch_size,seq_len,self.d_model)
+        return self.out_proj(attn_out)
+
+        
