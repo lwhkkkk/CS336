@@ -24,7 +24,7 @@ class Embedding(nn.Module):
     def forward(self,token_ids:torch.Tensor)-> torch.Tensor:
         return self.weight[token_ids]
 
-
+#均方根归一化
 class RMSNorm(nn.Module):
     def __init__(self,d_model: int ,eps:float =1e-5,device= None,dtype= None):
         super().__init__()
@@ -42,6 +42,7 @@ class RMSNorm(nn.Module):
         x=normed.to(in_dtype)
         return x 
 
+#SwiGLU前馈神经网络
 class SwiGLU(nn.Module):
     def __init__(self,d_model:int,d_ff: int | None = None,device = None,dtype =None):
         super().__init__()
@@ -143,11 +144,13 @@ class Causal_multi_head_self_attention(nn.Module):
             self.rope = RotaryPositionalEmbedding(theta=theta,d_k = self.d_k,max_seq_len = max_seq_len,device=device)
         else:
             self.rope = None
-
+        #WQ
         self.q_proj = Linear(in_features=d_model,out_features= d_model,device = device,dtype =dtype)
+        #Wk
         self.k_proj = Linear(in_features=d_model,out_features= d_model,device = device,dtype =dtype)
+        #Wv
         self.v_proj = Linear(in_features=d_model,out_features= d_model,device = device,dtype =dtype)
-        self.out_proj = Linear(in_features=d_model,out_features= d_model,device = device,dtype =dtype)
+        self.output_proj = Linear(in_features=d_model,out_features= d_model,device = device,dtype =dtype)
 
     def forward(self,x :torch.Tensor, token_positions: torch.Tensor | None = None):
         batch_size ,seq_len,_ = x.shape
@@ -176,6 +179,58 @@ class Causal_multi_head_self_attention(nn.Module):
 
         #contiguous在显存里真正把数据重新拷贝为连续的内存块，再将(num_heads,d_k)重新合成一个单维度d_model
         attn_out = attn_out.transpose(1,2).contiguous().view(batch_size,seq_len,self.d_model)
-        return self.out_proj(attn_out)
+        return self.output_proj(attn_out)
 
         
+
+class TransformerBlock(nn.Module):
+    def __init__(self,d_model: int,num_heads:int,d_ff:int,max_seq_len:int| None = None,theta:float |None =None,eps:float =1e-5,device =None,dtype =None):
+        super().__init__()
+        #均方根归一化
+        self.ln1 = RMSNorm(d_model =d_model,eps= eps,device=device,dtype=dtype)
+        #注意力层
+        self.attn = Causal_multi_head_self_attention(d_model=d_model,num_heads=num_heads,max_seq_len=max_seq_len,theta=theta,device=device,dtype=dtype)
+        self.ln2=RMSNorm(d_model =d_model,eps= eps,device=device,dtype=dtype)
+        #SWiGLu前馈函数
+        self.ffn = SwiGLU(d_model=d_model,d_ff=d_ff,device=device,dtype=dtype)
+
+    def forward(self,x:torch.Tensor,token_positions:torch.Tensor |None = None)-> torch.Tensor:
+        #注意力残差
+        x= x +self.attn(self.ln1(x),token_positions=token_positions)
+
+
+        #前馈网络残差
+        x = x + self.ffn(self.ln2(x))
+        return x 
+
+class TransformerLM(nn.Module):
+    def __init__(self,vocab_size:int, context_length:int,d_model: int,num_layers: int,num_heads:int,d_ff: int,rope_theta:float,eps:float =1e-5,device= None,dtype=None):
+        super().__init__()
+        self.token_embeddings = Embedding(vocab_size,d_model,device=device,dtype=dtype)
+        #未来张量可以传进来进行num_layers的计算
+        self.layers =nn.ModuleList([
+            TransformerBlock(d_model = d_model,num_heads = num_heads,d_ff = d_ff,max_seq_len=context_length,theta = rope_theta,eps = eps,device=device ,dtype=dtype)
+            for _ in range(num_layers)
+        ]) 
+        self.ln_final = RMSNorm(d_model = d_model,eps = eps ,device=device,dtype =dtype)
+        self.lm_head = Linear(in_features = d_model,out_features=vocab_size,device= device,dtype =dtype)
+
+
+    def forward(self,in_indices:torch.Tensor) -> torch.Tensor:
+        x = self.token_embeddings(in_indices)
+        for layer in self.layers:
+            x = layer(x)
+        x = self.ln_final(x)
+        logits = self.lm_head(x)
+        return logits 
+
+def cross_entropy(logits:torch.Tensor,targets:torch.Tensor):
+    #取最大值
+    max_value =torch.max(logits,dim=-1,keepdim=True).values
+    log_sum_exp = max_value.squeeze(-1) + torch.log(torch.sum(torch.exp(logits-max_value),dim = -1))
+
+    target_logits = torch.gather(logits,dim=-1,index=targets.unsqueeze(-1)).squeeze(-1)
+    
+    losses = log_sum_exp - target_logits
+
+    return losses.mean()

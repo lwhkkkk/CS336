@@ -10,7 +10,7 @@ from jaxtyping import Bool, Float, Int
 from torch import Tensor
 from cs336_basics.bpe import train_bpe
 from cs336_basics.tokenizer import Tokenizer
-from cs336_basics.model import Linear,Embedding,RMSNorm,SwiGLU,RotaryPositionalEmbedding,softmax,scaled_dot_product_attention,Causal_multi_head_self_attention
+from cs336_basics.model import Linear,Embedding,RMSNorm,SwiGLU,RotaryPositionalEmbedding,softmax,scaled_dot_product_attention,Causal_multi_head_self_attention,TransformerBlock,TransformerLM,cross_entropy
 
 def run_linear(
     d_in: int,
@@ -152,7 +152,7 @@ def run_multihead_self_attention(
         "q_proj.weight": q_proj_weight,
         "k_proj.weight": k_proj_weight,
         "v_proj.weight": v_proj_weight,
-        "out_proj.weight": o_proj_weight,
+        "output_proj.weight": o_proj_weight,
     })
     return attn(in_features)
 
@@ -300,7 +300,14 @@ def run_transformer_block(
         Float[Tensor, "batch sequence_length d_model"] Tensor with the output of
         running the Transformer block on the input features while using RoPE.
     """
-    raise NotImplementedError
+    tb = TransformerBlock(d_model =d_model,num_heads =num_heads,d_ff =d_ff,max_seq_len = max_seq_len,theta =theta)
+    #转换微小差异的的键名
+    mapped_weights ={}
+
+    
+
+    tb.load_state_dict(mapped_weights)
+    return tb(in_features)
 
 
 def run_transformer_lm(
@@ -382,7 +389,9 @@ def run_transformer_lm(
         Float[Tensor, "batch_size sequence_length vocab_size"]: Tensor with the predicted unnormalized
         next-word distribution for each token.
     """
-    raise NotImplementedError
+    LM = TransformerLM(vocab_size =vocab_size,context_length = context_length,d_model= d_model,num_layers = num_layers,num_heads = num_heads,d_ff= d_ff,rope_theta= rope_theta )
+    LM.load_state_dict(weights)
+    return LM(in_indices)
 
 
 def run_rmsnorm(
@@ -481,7 +490,7 @@ def run_cross_entropy(
     Returns:
         Float[Tensor, ""]: The average cross-entropy loss across examples.
     """
-    raise NotImplementedError
+    return cross_entropy(inputs,targets)
 
 
 def run_gradient_clipping(parameters: Iterable[torch.nn.Parameter], max_l2_norm: float) -> None:
