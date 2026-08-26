@@ -1,6 +1,6 @@
 import torch  
 import math
-
+from collections.abc import Iterable
 
 
 class AdamW(torch.optim.Optimizer):
@@ -20,11 +20,13 @@ class AdamW(torch.optim.Optimizer):
 
         #param_groups是defaults字典里创建的，此时提取当前组的超参数
         for group in self.param_groups:
+
             #提取当前一组参数专属的超参数
             beta1,beta2 = group['betas']
             lr = group['lr']
             eps = group['eps']
             weight_decay = group['weight_decay']
+
             #用这一组专属的超参数，去更新这一组里所有参数p
             for p in group['params']:
                 if p.grad is None:
@@ -79,3 +81,26 @@ def lr_cosine_schedule(it:int,max_learning_rate:float,min_learning_rate:float,wa
     else:
 
         return min_learning_rate + 0.5 *(1+ math.cos(((it - warmup_iters)/(cosine_cycle_iters - warmup_iters))* math.pi)) * (max_learning_rate - min_learning_rate)
+
+
+
+
+def gradient_clipping(parameters:Iterable[torch.nn.Parameter],max_l2_norm:float) -> None:
+    #转为list，可以多次遍历
+    params =list(parameters)
+    total_norm_sq = 0.0 
+    for p in params:
+        if p.grad is None:
+            continue
+        total_norm_sq = total_norm_sq + (p.grad ** 2).sum().item()
+
+    total_norm = total_norm_sq ** 0.5 
+
+
+    #计算缩放系数
+    clip_coef = max_l2_norm / (total_norm + 1e-6)
+
+    if clip_coef < 1.0 :
+        for p in params:
+            if p.grad is not None:
+                p.grad.mul_(clip_coef)
