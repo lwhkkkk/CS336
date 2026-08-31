@@ -1,6 +1,8 @@
 import torch  
 import math
 from collections.abc import Iterable
+import os
+import typing
 
 
 class AdamW(torch.optim.Optimizer):
@@ -104,3 +106,26 @@ def gradient_clipping(parameters:Iterable[torch.nn.Parameter],max_l2_norm:float)
         for p in params:
             if p.grad is not None:
                 p.grad.mul_(clip_coef)
+
+
+
+
+
+def save_checkpoint(model:torch.nn.Module,optimizer:torch.optim.Optimizer,iteration:int,out:str | os.PathLike | typing.BinaryIO | typing.IO[bytes]):
+    checkpoint_dict ={}
+    #加入引号做字符串
+    checkpoint_dict["model_state"] = model.state_dict()
+    checkpoint_dict["optimizer_state"] = optimizer.state_dict()
+    checkpoint_dict["iteration"] = iteration
+
+    return torch.save(checkpoint_dict,out)
+
+
+def load_checkpoint(src:str| os.PathLike |typing.BinaryIO| typing.IO[bytes], model:torch.nn.Module, optimizer:torch.optim.Optimizer):
+    #加载包含所有状态的字典
+    checkpoint = torch.load(src)
+
+    model.load_state_dict(checkpoint["model_state"])
+    optimizer.load_state_dict(checkpoint["optimizer_state"])
+    return checkpoint["iteration"]
+
