@@ -234,3 +234,59 @@ def cross_entropy(logits:torch.Tensor,targets:torch.Tensor):
     losses = log_sum_exp - target_logits
 
     return losses.mean()
+
+
+def sample_decoding(model:TransformerLM,max_new_tokens:int,eos_token_id:int, prompt_indices:torch.Tensor,temperature=1.0,top_p = 1.0):
+    model.eval()
+    #禁用梯度计算
+    with torch.no_grad():
+        #初始化动态序列变量
+        current_ids = prompt_indices.clone()
+
+        for _ in range(max_new_tokens):
+            #第一个维度: 保留所有的batch，第二个-model.context_length:，从倒数第model.context_length 个元素一直取到最末尾
+            #取末尾是因为离它最近的上下文比很久以前的重要
+            current_input = current_ids[:, -model.context_length:]
+            logits = model(current_input)
+            #logits 形状：(batch_size, sequence_length, vocab_size)（三维张量）
+            next_token_logits = logits[:, -1, :]
+
+            #temperature 是改变 Logits 相对差距、调控随机性的极佳手段
+            next_token_logits = next_token_logits / temperature 
+
+            #按得分从大到小排序
+            sorted_logits ,sorted_indices = torch.sort(next_token_logits,descending = True,dim = -1)
+            # 计算softmax的排序后的概率
+            sorted_probs = torch.softmax(sorted_logits ,dim = -1)
+            
+            # 计算softmax的累计概率，累积求和/前缀求和
+            cumulative_probs = torch.cumsum(sorted_probs, dim = -1)
+
+            #找出累计概率超过top_p 的位置
+            sorted_indices_to_remove = cumulative_probs > top_p #里面存的bool
+
+            #将掩码右移一位，确保累积概率恰好刚好达到top_p的那个临界词也被保留下来
+            sorted_indices_to_remove[:,1:] = sorted_indices_to_remove[:,:-1].clone()
+            
+            #把概率最高的设定为false，保护概率最大的那位
+            sorted_indices_to_remove[: ,0] = False
+
+            #把true全部设置为inf
+            sorted_logits [sorted_indices_to_remove] = -float('inf')
+            
+            #归一化概率
+            probs = torch.softmax(sorted_logits,dim = -1 )
+
+            #概率抽样
+            next_sorted_token = torch.multinomial(probs,num_samples = 1)
+
+            #查追溯地图找回原Token ID
+            next_token = torch.gather(sorted_indices ,dim= -1,index =next_sorted_token)
+
+
+            #拼接到当前序列中
+            current_ids = torch.cat([current_ids,next_token],dim =-1)
+
+        return current_ids
+
+            
