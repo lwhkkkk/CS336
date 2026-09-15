@@ -63,9 +63,9 @@ if __name__ == "__main__":
     args = parse_args()
 
     #初始化wandb
-    wandb,init(
+    wandb.init(
         project = "cs336-assignment1",
-        name = "trabsformer_lm"
+        name = f"transformer_lm_batch128{args.lr}",
         config = vars(args)
     )
 
@@ -99,7 +99,7 @@ if __name__ == "__main__":
         elapsed_time = time.time() -start_time
 
         wandb.log({
-            "train/loss": loss.item()
+            "train/loss": loss.item(),
             "wall_clock_time" : elapsed_time,
         },step = step
         )

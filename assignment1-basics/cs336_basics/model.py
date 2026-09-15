@@ -186,6 +186,7 @@ class Causal_multi_head_self_attention(nn.Module):
 class TransformerBlock(nn.Module):
     def __init__(self,d_model: int,num_heads:int,d_ff:int,max_seq_len:int| None = None,theta:float |None =None,eps:float =1e-5,device =None,dtype =None):
         super().__init__()
+        
         #均方根归一化
         self.ln1 = RMSNorm(d_model =d_model,eps= eps,device=device,dtype=dtype)
         #注意力层
@@ -206,6 +207,7 @@ class TransformerBlock(nn.Module):
 class TransformerLM(nn.Module):
     def __init__(self,vocab_size:int, context_length:int,d_model: int,num_layers: int,num_heads:int,d_ff: int,rope_theta:float,eps:float =1e-5,device= None,dtype=None):
         super().__init__()
+        self.context_length =context_length
         self.token_embeddings = Embedding(vocab_size,d_model,device=device,dtype=dtype)
         #未来张量可以传进来进行num_layers的计算
         self.layers =nn.ModuleList([
@@ -286,6 +288,9 @@ def sample_decoding(model:TransformerLM,max_new_tokens:int,eos_token_id:int, pro
 
             #拼接到当前序列中
             current_ids = torch.cat([current_ids,next_token],dim =-1)
+
+            if (next_token == eos_token_id).all():
+                break
 
         return current_ids
 
