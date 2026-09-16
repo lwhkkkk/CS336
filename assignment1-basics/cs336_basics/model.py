@@ -65,6 +65,30 @@ class SwiGLU(nn.Module):
 
         return self.w2(out1 * torch.sigmoid(out1) * out3)
 
+#消融实验
+class FFNSiLU(nn.Module):
+    def __init__(self, d_model:int, d_ff: int ,device =None, dtype = None):
+        super().__init__()
+        
+        #升维层
+        self.w1 = Linear(in_features = d_model,out_features =d_ff,device = device ,dtype =dtype)
+
+        #降维层
+        self.w2 = Linear(in_features = d_ff, out_features = d_model,device = device, dtype =dtype)
+
+    def forward(self, x:torch.Tensor) -> torch.Tensor:
+        #经过升维层
+        out1 = self.w1(x)
+        
+        #计算SiLU激活函数
+        out2 = out1 * torch.sigmoid(out1)
+
+        #经过降维层返回
+        return  self.w2(out2)
+
+
+
+
 
 class RotaryPositionalEmbedding(nn.Module):
     def __init__(self,theta:float,d_k: int,max_seq_len: int,device=None):
@@ -198,10 +222,12 @@ class TransformerBlock(nn.Module):
     def forward(self,x:torch.Tensor,token_positions:torch.Tensor |None = None)-> torch.Tensor:
         #注意力残差
         x= x +self.attn(self.ln1(x),token_positions=token_positions)
+        
 
 
         #前馈网络残差
         x = x + self.ffn(self.ln2(x))
+      
         return x 
 
 class TransformerLM(nn.Module):
