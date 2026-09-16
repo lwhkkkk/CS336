@@ -1,0 +1,1 @@
+uv pip install --pre torch --index-url https://download.pytorch.org/whl/nightly/cu128 --force-reinstall
